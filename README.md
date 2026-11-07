@@ -6,28 +6,42 @@
 [![Security: Zero-Trust JWT](https://img.shields.io/badge/Auth-In--Memory%20JWT%20%2B%20HttpOnly-10B981?style=for-the-badge)](https://owasp.org/)
 [![Accessibility: WCAG 2.1 AA](https://img.shields.io/badge/A11y-WCAG%202.1%20AA-8B5CF6?style=for-the-badge)](https://www.w3.org/WAI/WCAG21/quickref/)
 
-**Cofre Full-Stack de Autenticação Zero-Trust e Governança de Alçadas Financeiras (RBAC)** construído com **Node.js, Express, TypeScript, SQL (SQLite), React 18, Vite, Tailwind CSS, shadcn/ui e Framer Motion**.
+**Full-Stack Zero-Trust Access & Financial Approval Vault** engineered with **Node.js, Express, TypeScript, SQL (SQLite), React 18, Vite, Tailwind CSS, shadcn/ui, and Framer Motion**.
 
 ---
 
-## 🎯 O Problema Real de Mercado Resolvido
+## 🖥️ Live UI Preview & Accessibility Showcase
 
-Mais de 90% das aplicações SPA modernas cometem um erro crítico de segurança: **armazenam o token JWT no `localStorage` ou `sessionStorage` do navegador**. Caso ocorra qualquer vulnerabilidade de *Cross-Site Scripting (XSS)* — até mesmo via pacote NPM de terceiros — um atacante consegue ler `localStorage.getItem('token')` e sequestrar a conta do executivo.
+### 1. CISO Admin View — In-Memory JWT Telemetry & Full RBAC Write Access
+The `ADMIN` and `FINANCE_MANAGER` roles hold the `approvals:approve` and `approvals:reject` permissions, unlocking write actions on high-value FinOps batches while keeping `window.localStorage` completely empty (`length === 0`):
 
-O **Fortress JWT & RBAC Vault** elimina esse vetor de ataque de ponta a ponta:
+![Fortress Vault Admin View](docs/screenshots/dashboard-admin-view.jpg)
 
-1. **JWT de Curta Duração Exclusivamente em Memória (`In-Memory Access Token`):**
-   No Front-End React, o `accessToken` (15 minutos) vive **apenas em uma variável privada dentro de um Closure/Contexto em memória RAM**, jamais tocando no `localStorage`, `sessionStorage` ou cookies acessíveis via `document.cookie`.
-2. **Refresh Token Rotativo em Cookie `HttpOnly` + Detecção de Roubo de Sessão:**
-   O `refreshToken` (7 dias) é transmitido exclusivamente via cabeçalho `Set-Cookie` com as flags `HttpOnly; Secure; SameSite=Strict; Path=/api/auth`. A cada renovação silenciosa (*Silent Refresh*), o token antigo é invalidado no banco SQL e substituído por um novo (**Refresh Token Rotation**). Se um token antigo for reutilizado, o sistema detecta o sequestro e revoga toda a família de sessões do usuário imediatamente.
-3. **Senhas com `Bcrypt` & Controle de Acesso Baseado em Cargos (`RBAC`):**
-   Hashing adaptativo com **Bcrypt** e matriz de permissões granular (`ADMIN`, `FINANCE_MANAGER`, `AUDITOR`) validada tanto no middleware da API RESTful quanto na renderização condicional da UI.
-4. **Acessibilidade Nativa (`WCAG 2.1 Nível AA`):**
-   Interface desenhada com **Tailwind CSS + padrões shadcn/ui + Framer Motion** respeitando `prefers-reduced-motion`, navegação integral por teclado (`Skip to main content`, `Focus Visible`, `aria-live="polite"`, `role="alert"` e contraste mínimo de `4.5:1`).
+### 2. External Auditor View — RBAC Read-Only Enforcement, WCAG Focus Ring & Breach Audit Trail
+Switching to the `AUDITOR` role dynamically restricts the session scope to `approvals:read` and `audit:read`. Write actions are locked both in the UI and at the Express REST middleware layer, while full keyboard focus rings (`3px solid #10B981`) and `aria-live` regions guarantee **WCAG 2.1 AA** compliance:
+
+![Fortress Vault Auditor Read-Only & WCAG View](docs/screenshots/dashboard-auditor-readonly-wcag.jpg)
 
 ---
 
-## 🏗️ Arquitetura de Segurança Zero-Trust
+## 🎯 The Real-World Security Problem Solved
+
+Over 90% of modern Single-Page Applications (SPAs) suffer from a critical architectural flaw: **storing JWT tokens inside `localStorage` or `sessionStorage`**. If any Cross-Site Scripting (XSS) vector occurs — even through a compromised third-party NPM dependency — an attacker can execute `localStorage.getItem('token')` and exfiltrate executive credentials instantly.
+
+**Fortress JWT & RBAC Vault** eliminates this attack surface end-to-end:
+
+1. **Short-Lived JWT Strictly in RAM (`In-Memory Closure`):**
+   On the React client (`AuthMemoryContext.tsx`), the 15-minute `accessToken` lives **exclusively inside a private JavaScript closure in memory**, never touching `localStorage`, `sessionStorage`, or DOM-accessible cookies.
+2. **Rotating Refresh Tokens in `HttpOnly` Cookies + Reuse Breach Detection:**
+   The 7-day `refreshToken` is transmitted strictly via `Set-Cookie` with `HttpOnly; Secure; SameSite=Strict; Path=/api/auth`. On every silent refresh (`/api/auth/refresh`), the previous token is marked as used and replaced. If an attacker replays an already-rotated token, the backend detects the breach (`TOKEN_REUSE_BREACH_DETECTED`), revokes the entire token family in SQL, and logs a critical security event.
+3. **Adaptive `Bcrypt` Hashing & Granular `RBAC` Matrix:**
+   Passwords are hashed using **Bcrypt**, and every endpoint is guarded by declarative role and permission middleware (`ADMIN`, `FINANCE_MANAGER`, `AUDITOR`).
+4. **Native `WCAG 2.1 Level AA` Accessibility:**
+   Built with **Tailwind CSS + shadcn/ui patterns + Framer Motion** (`useReducedMotion`), featuring a keyboard Skip-Link, high-contrast focus rings, semantic ARIA states (`aria-pressed`, `aria-live="polite"`), and screen-reader announcements.
+
+---
+
+## 🏗️ Zero-Trust Authentication & RBAC Sequence
 
 ```mermaid
 sequenceDiagram
@@ -40,51 +54,66 @@ sequenceDiagram
     API->>DB: SELECT user & Bcrypt.compare(password, hash)
     API->>DB: INSERT refresh_token_family (token_hash, expires_at)
     API-->>UI: 200 OK { accessToken (15m) } + Set-Cookie: fortress_rt (HttpOnly, SameSite=Strict)
-    Note over UI: accessToken salvo APENAS em memória RAM (Zero localStorage)
+    Note over UI: accessToken stored ONLY in RAM (Zero localStorage)
 
-    UI->>API: POST /api/approvals/:id/approve (Authorization: Bearer <accessToken>)
-    API->>API: Middleware verifyJwt + requireRole(['ADMIN', 'FINANCE_MANAGER'])
+    UI->>API: POST /api/approvals/:id/decision (Authorization: Bearer <accessToken>)
+    API->>API: Middleware verifyJwt + requirePermission('approvals:approve')
     API->>DB: UPDATE financial_approvals + INSERT audit_logs
-    API-->>UI: 200 OK (Transação Aprovada)
+    API-->>UI: 200 OK (Batch Approved)
 
-    Note over UI,API: Expiração de 15m -> Silent Refresh Automático
-    UI->>API: POST /api/auth/refresh (Envia Cookie HttpOnly automaticamente)
-    API->>DB: Verifica se token já foi usado (Anti-Replay Breach Detection)
-    API->>DB: Revoga token antigo e grava novo Refresh Token na família
-    API-->>UI: 200 OK { newAccessToken } + Novo Cookie HttpOnly
+    Note over UI,API: 15m Expiration -> Silent Refresh via HttpOnly Cookie
+    UI->>API: POST /api/auth/refresh (Browser sends HttpOnly cookie automatically)
+    API->>DB: Verify if token was already used (OWASP Token Reuse Breach Detection)
+    API->>DB: Mark old token used & issue new Refresh Token in the same family
+    API-->>UI: 200 OK { newAccessToken } + New HttpOnly Cookie
 ```
 
 ---
 
-## 📂 Estrutura do Projeto
+## 🔐 RBAC Permission Matrix
+
+| Permission Slug | `ADMIN` (CISO) | `FINANCE_MANAGER` (FinOps) | `AUDITOR` (Compliance) |
+| :--- | :---: | :---: | :---: |
+| `approvals:read` | ✅ | ✅ | ✅ |
+| `approvals:create` | ✅ | ✅ | ❌ |
+| `approvals:approve` | ✅ | ✅ | ❌ |
+| `approvals:reject` | ✅ | ✅ | ❌ |
+| `audit:read` | ✅ | ✅ | ✅ |
+| `sessions:revoke` | ✅ | ❌ | ❌ |
+
+---
+
+## 📂 Project Architecture
 
 ```text
 fortress-jwt-rbac/
+├── docs/
+│   └── screenshots/
+│       ├── dashboard-admin-view.jpg
+│       └── dashboard-auditor-readonly-wcag.jpg
 ├── server/
 │   ├── src/
 │   │   ├── config/
-│   │   │   └── database.ts            # Camada SQL (SQLite Nativo) com tabelas users, refresh_tokens, approvals e audit_logs
+│   │   │   └── database.ts            # Relational SQLite layer (users, refresh_tokens, approvals, audit_logs)
 │   │   ├── middleware/
-│   │   │   ├── authMiddleware.ts      # Validação estrita do Bearer JWT
-│   │   │   └── rbacMiddleware.ts      # Guarda de rotas por Role e Permission (RBAC)
+│   │   │   └── rbacMiddleware.ts      # Bearer JWT verification + Role & Permission guards
 │   │   ├── services/
-│   │   │   ├── AuthService.ts         # Bcrypt, emissão JWT, rotação de Refresh Token e revogação de família
-│   │   │   └── ApprovalVaultService.ts # Fluxo de alçadas financeiras e trilha de auditoria SQL
+│   │   │   └── AuthService.ts         # Bcrypt verification, JWT issuer & Refresh Token reuse detection
 │   │   ├── routes/
-│   │   │   └── apiRoutes.ts           # Endpoints RESTful (/api/auth/*, /api/approvals/*, /api/audit)
+│   │   │   └── apiRoutes.ts           # Express RESTful endpoints (/api/auth/*, /api/approvals/*, /api/audit-logs)
 │   │   ├── types/
-│   │   │   └── domain.ts              # Contratos TypeScript de RBAC, JWT e Entidades
-│   │   └── index.ts                   # Bootstrap Express + Helmet + CORS Credentials + CookieParser
+│   │   │   └── domain.ts              # Strict TypeScript RBAC & domain contracts
+│   │   └── index.ts                   # Express bootstrap + Helmet + CORS Credentials + CookieParser
 │   └── tests/
-│       └── authAndRbac.test.ts        # Suíte de testes automatizados (Bcrypt, JWT, Rotação e RBAC)
+│       └── authAndRbac.test.ts        # Automated Node 22 test suite (Bcrypt, Token Rotation Breach & RBAC)
 ├── client/
 │   ├── src/
 │   │   ├── context/
-│   │   │   └── AuthMemoryContext.tsx  # Guarda o Access Token estritamente em memória RAM + Silent Refresh
+│   │   │   └── AuthMemoryContext.tsx  # Private RAM closure storing Access Token + Silent Refresh simulator
 │   │   ├── components/
-│   │   │   ├── ui/                    # Componentes acessíveis padrão shadcn/ui (Button, Badge, Card, Alert)
-│   │   │   ├── RbacGuard.tsx          # Proteção visual declarativa por Role/Permissão
-│   │   │   └── VaultDashboard.tsx     # Painel WCAG 2.1 AA com animações Framer Motion
+│   │   │   ├── ui/
+│   │   │   │   └── Primitives.tsx     # Accessible shadcn/ui-style Button & Badge primitives
+│   │   │   └── VaultDashboard.tsx     # WCAG 2.1 AA interactive FinOps & RBAC dashboard with Framer Motion
 │   │   ├── App.tsx
 │   │   └── main.tsx
 ├── docker-compose.yml
@@ -95,28 +124,34 @@ fortress-jwt-rbac/
 
 ---
 
-## 🚀 Como Executar Localmente ou com Docker
+## 🚀 Getting Started (Local & Docker)
 
-### 1. Instalação e Testes Automatizados
+### 1. Clone, Install & Run Automated Tests
 ```bash
 git clone https://github.com/JzGuilherme/fortress-jwt-rbac.git
 cd fortress-jwt-rbac
 cp .env.example .env
 npm install
 npm test
+npm run typecheck
 ```
 
-### 2. Rodando Back-End e Front-End
+### 2. Start Full-Stack Development Servers
 ```bash
-# Terminal 1: API RESTful Node.js + Express (Porta 4000)
+# Terminal 1: Node.js + Express Zero-Trust REST API (http://localhost:4000)
 npm run dev:server
 
-# Terminal 2: Front-End React + Vite + Tailwind (Porta 5173)
+# Terminal 2: React 18 + Vite + Tailwind CSS UI (http://localhost:5173)
 npm run dev:client
+```
+
+### 3. Run via Docker Compose
+```bash
+docker compose up -d --build
 ```
 
 ---
 
-## 📄 Licença
+## 📄 License
 
-Distribuído sob a licença **MIT**. Veja [LICENSE](LICENSE) para mais detalhes.
+Distributed under the **MIT License**. See [LICENSE](LICENSE) for full details.
