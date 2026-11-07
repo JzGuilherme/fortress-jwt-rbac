@@ -15,7 +15,7 @@ export function createApp(storagePath = process.env.DB_STORAGE_PATH || ':memory:
   app.use(helmet());
   app.use(
     cors({
-      origin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+      origin: process.env.CORS_ORIGIN || true,
       credentials: true,
     })
   );
