@@ -1,0 +1,11 @@
+services:
+  fortress-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: fortress_jwt_rbac_api
+    restart: unless-stopped
+    env_file:
+      - .env.example
+    ports:
+      - "${PORT:-4000}:4000"

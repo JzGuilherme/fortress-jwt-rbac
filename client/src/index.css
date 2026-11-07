@@ -1,0 +1,11 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* WCAG 2.1 AA High-Visibility Keyboard Focus Ring */
+@layer base {
+  *:focus-visible {
+    outline: 3px solid #10b981;
+    outline-offset: 2px;
+  }
+}
