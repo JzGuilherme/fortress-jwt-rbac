@@ -1,8 +1,11 @@
 {
   "name": "fortress-jwt-rbac",
-  "version": "1.1.0",
+  "version": "1.2.1",
   "type": "module",
   "private": true,
+  "engines": {
+    "node": "22.x"
+  },
   "description": "Full-Stack Zero-Trust Access & Approval Vault (Node.js, Express, TypeScript & React/Vite) featuring In-Memory JWT, HttpOnly Rotating Refresh Cookies, Bcrypt, granular RBAC, and WCAG 2.1 AA accessible UI with Tailwind CSS, shadcn/ui, and Framer Motion.",
   "author": "José Guilherme <https://github.com/JzGuilherme>",
   "license": "MIT",
