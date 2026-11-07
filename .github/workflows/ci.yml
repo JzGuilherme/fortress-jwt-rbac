@@ -1,0 +1,42 @@
+name: Zero-Trust CI — TypeScript, Tests & Secret Scan
+
+on:
+  push:
+    branches: [ "main", "develop", "feature/**" ]
+  pull_request:
+    branches: [ "main", "develop" ]
+
+jobs:
+  security-and-tests:
+    name: Zero-Leak Scan, TypeScript & Node 22 Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Audit Zero-Leak Policy (.env)
+        run: |
+          if git ls-files --error-unmatch .env .env.local 2>/dev/null; then
+            echo "::error::CRITICAL: A .env file is tracked by Git!"
+            exit 1
+          fi
+          echo "Zero-Leak Security check passed."
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: TypeScript Strict Typecheck (Server & Client)
+        run: npm run typecheck
+
+      - name: Run Automated Auth, Bcrypt & RBAC Tests
+        run: npm test
+
+      - name: Build Production Client & Server Bundles
+        run: npm run build
