@@ -1,0 +1,30 @@
+# Environment Variables & Secrets (ZERO LEAK POLICY)
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Build & Dist
+dist/
+**/dist/
+build/
+
+# SQLite Local Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs & Coverage
+logs/
+*.log
+npm-debug.log*
+coverage/
+
+# IDE & OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
