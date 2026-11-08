@@ -9,7 +9,7 @@ import {
 } from '../types/domain.js';
 
 /**
- * Native SQLite Repository Layer (Node 22+ `node:sqlite`) providing full relational SQL DDL/DML
+ * Native SQLite Repository Layer (Node 22+ `node:sqlite`) providing atomic transactions
  * for Users, Rotating Refresh Token Families, Financial Approvals, and Immutable Audit Trails.
  */
 export class SqlVaultDatabase {
@@ -19,6 +19,18 @@ export class SqlVaultDatabase {
     this.db = new DatabaseSync(storagePath);
     this.initializeSchema();
     this.seedDefaultData();
+  }
+
+  public runInTransaction<T>(fn: () => T): T {
+    this.db.exec('BEGIN IMMEDIATE TRANSACTION');
+    try {
+      const result = fn();
+      this.db.exec('COMMIT');
+      return result;
+    } catch (err) {
+      this.db.exec('ROLLBACK');
+      throw err;
+    }
   }
 
   private initializeSchema(): void {
@@ -40,6 +52,8 @@ export class SqlVaultDatabase {
         token_hash TEXT NOT NULL UNIQUE,
         is_used INTEGER NOT NULL DEFAULT 0,
         is_revoked INTEGER NOT NULL DEFAULT 0,
+        used_at INTEGER NULL,
+        replaced_by_token_hash TEXT NULL,
         expires_at INTEGER NOT NULL,
         created_at TEXT NOT NULL,
         FOREIGN KEY (user_id) REFERENCES users(id)
@@ -52,7 +66,7 @@ export class SqlVaultDatabase {
         id TEXT PRIMARY KEY,
         title TEXT NOT NULL,
         vendor TEXT NOT NULL,
-        amount_cents INTEGER NOT NULL,
+        amount_cents INTEGER NOT NULL CHECK (amount_cents > 0),
         status TEXT NOT NULL CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
         requested_by TEXT NOT NULL,
         decided_by TEXT NULL,
@@ -131,6 +145,7 @@ export class SqlVaultDatabase {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
+    // High-value item (> R$ 25.000,00 -> Requires ADMIN clearance, exceeds FINANCE_MANAGER ceiling)
     insertApproval.run(
       'APR-9001',
       'Renovação Cluster Kubernetes Multi-AZ Produção',
@@ -155,6 +170,7 @@ export class SqlVaultDatabase {
       now
     );
 
+    // Medium-value item (<= R$ 25.000,00 -> Within FINANCE_MANAGER ceiling of R$ 25k)
     insertApproval.run(
       'APR-9003',
       'Licenciamento Enterprise Tokens Gemini 2.5 Flash',
@@ -182,8 +198,10 @@ export class SqlVaultDatabase {
 
   public saveRefreshToken(record: RefreshTokenRecord): void {
     const stmt = this.db.prepare(`
-      INSERT INTO refresh_tokens (id, user_id, family_id, token_hash, is_used, is_revoked, expires_at, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO refresh_tokens (
+        id, user_id, family_id, token_hash, is_used, is_revoked, used_at, replaced_by_token_hash, expires_at, created_at
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     stmt.run(
       record.id,
@@ -192,6 +210,8 @@ export class SqlVaultDatabase {
       record.tokenHash,
       record.isUsed ? 1 : 0,
       record.isRevoked ? 1 : 0,
+      record.usedAt,
+      record.replacedByTokenHash,
       record.expiresAt,
       record.createdAt
     );
@@ -211,14 +231,29 @@ export class SqlVaultDatabase {
       tokenHash: String(row.token_hash),
       isUsed: Number(row.is_used) === 1,
       isRevoked: Number(row.is_revoked) === 1,
+      usedAt: row.used_at !== null && row.used_at !== undefined ? Number(row.used_at) : null,
+      replacedByTokenHash: row.replaced_by_token_hash ? String(row.replaced_by_token_hash) : null,
       expiresAt: Number(row.expires_at),
       createdAt: String(row.created_at),
     };
   }
 
-  public markRefreshTokenUsed(id: string): void {
-    const stmt = this.db.prepare('UPDATE refresh_tokens SET is_used = 1 WHERE id = ?');
-    stmt.run(id);
+  /**
+   * Atomically marks a refresh token as used only if it is currently unused (`is_used = 0`).
+   * Returns true if this caller won the atomic update, false if another concurrent request already used it.
+   */
+  public markRefreshTokenUsedAtomically(
+    id: string,
+    usedAt: number,
+    replacedByTokenHash: string
+  ): boolean {
+    const stmt = this.db.prepare(`
+      UPDATE refresh_tokens
+      SET is_used = 1, used_at = ?, replaced_by_token_hash = ?
+      WHERE id = ? AND is_used = 0 AND is_revoked = 0
+    `);
+    const res = stmt.run(usedAt, replacedByTokenHash, id);
+    return Number(res.changes) === 1;
   }
 
   public revokeRefreshTokenFamily(familyId: string): number {
@@ -227,20 +262,35 @@ export class SqlVaultDatabase {
     return Number(result.changes);
   }
 
+  public findApprovalById(id: string): FinancialApprovalRecord | null {
+    const stmt = this.db.prepare('SELECT * FROM financial_approvals WHERE id = ?');
+    const row = stmt.get(id) as Record<string, unknown> | undefined;
+    return row ? this.mapApproval(row) : null;
+  }
+
+  public createApproval(record: FinancialApprovalRecord): FinancialApprovalRecord {
+    const stmt = this.db.prepare(`
+      INSERT INTO financial_approvals (id, title, vendor, amount_cents, status, requested_by, decided_by, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      record.id,
+      record.title,
+      record.vendor,
+      record.amountCents,
+      record.status,
+      record.requestedBy,
+      record.decidedBy,
+      record.createdAt,
+      record.updatedAt
+    );
+    return record;
+  }
+
   public listApprovals(): FinancialApprovalRecord[] {
     const stmt = this.db.prepare('SELECT * FROM financial_approvals ORDER BY created_at DESC');
     const rows = stmt.all() as Array<Record<string, unknown>>;
-    return rows.map((r) => ({
-      id: String(r.id),
-      title: String(r.title),
-      vendor: String(r.vendor),
-      amountCents: Number(r.amount_cents),
-      status: String(r.status) as FinancialApprovalRecord['status'],
-      requestedBy: String(r.requested_by),
-      decidedBy: r.decided_by ? String(r.decided_by) : null,
-      createdAt: String(r.created_at),
-      updatedAt: String(r.updated_at),
-    }));
+    return rows.map((r) => this.mapApproval(r));
   }
 
   public updateApprovalStatus(
@@ -259,23 +309,7 @@ export class SqlVaultDatabase {
       return null;
     }
 
-    const selectStmt = this.db.prepare('SELECT * FROM financial_approvals WHERE id = ?');
-    const row = selectStmt.get(id) as Record<string, unknown> | undefined;
-    if (!row) {
-      return null;
-    }
-
-    return {
-      id: String(row.id),
-      title: String(row.title),
-      vendor: String(row.vendor),
-      amountCents: Number(row.amount_cents),
-      status: String(row.status) as FinancialApprovalRecord['status'],
-      requestedBy: String(row.requested_by),
-      decidedBy: row.decided_by ? String(row.decided_by) : null,
-      createdAt: String(row.created_at),
-      updatedAt: String(row.updated_at),
-    };
+    return this.findApprovalById(id);
   }
 
   public appendAuditLog(log: AuditLogRecord): void {
@@ -306,6 +340,20 @@ export class SqlVaultDatabase {
       details: String(r.details),
       timestamp: String(r.timestamp),
     }));
+  }
+
+  private mapApproval(r: Record<string, unknown>): FinancialApprovalRecord {
+    return {
+      id: String(r.id),
+      title: String(r.title),
+      vendor: String(r.vendor),
+      amountCents: Number(r.amount_cents),
+      status: String(r.status) as FinancialApprovalRecord['status'],
+      requestedBy: String(r.requested_by),
+      decidedBy: r.decided_by ? String(r.decided_by) : null,
+      createdAt: String(r.created_at),
+      updatedAt: String(r.updated_at),
+    };
   }
 
   private mapUser(row: Record<string, unknown>): UserRecord {
