@@ -23,6 +23,10 @@ logs/
 npm-debug.log*
 coverage/
 
+# Local Remotion Video Artifacts
+video/
+*.mp4
+
 # IDE & OS
 .idea/
 .vscode/
