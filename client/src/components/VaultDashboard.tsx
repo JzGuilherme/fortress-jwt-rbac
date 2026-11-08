@@ -52,7 +52,7 @@ const INITIAL_APPROVALS: ApprovalItem[] = [
 export const VaultDashboard: React.FC = () => {
   const {
     user,
-    accessTokenInMemory,
+    maskedTokenPreview,
     lastRotationAt,
     loginWithPresetRole,
     rotateSilentRefreshToken,
@@ -146,16 +146,19 @@ export const VaultDashboard: React.FC = () => {
         >
           <div className="rounded-xl border border-slate-800 bg-slate-900/80 p-5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
-                1. JWT em Memória RAM
+              <span
+                id="security-telemetry-heading"
+                className="text-xs font-semibold uppercase tracking-wider text-emerald-400"
+              >
+                1. JWT em Memória RAM (Closure)
               </span>
               <KeyRound className="h-4 w-4 text-emerald-400" aria-hidden="true" />
             </div>
             <p className="mt-2 font-mono text-xs break-all text-slate-300">
-              {accessTokenInMemory ? `${accessTokenInMemory.slice(0, 44)}...` : 'REVOKED'}
+              {maskedTokenPreview}
             </p>
             <p className="mt-2 text-xs text-slate-400">
-              <code>window.localStorage.length === 0</code> (Imune a roubo de token via XSS)
+              <code>window.localStorage.length === 0</code> (Fora da árvore React Fiber)
             </p>
           </div>
 
@@ -173,7 +176,7 @@ export const VaultDashboard: React.FC = () => {
               <Button
                 variant="outline"
                 onClick={() => {
-                  rotateSilentRefreshToken();
+                  void rotateSilentRefreshToken();
                   setLiveAnnouncement('Refresh token rotacionado via Cookie HttpOnly.');
                 }}
               >

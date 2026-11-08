@@ -1,6 +1,7 @@
 {
   "name": "fortress-jwt-rbac",
-  "version": "1.0.0",
+  "version": "1.1.0",
+  "type": "module",
   "private": true,
   "description": "Full-Stack Zero-Trust Access & Approval Vault (Node.js, Express, TypeScript & React/Vite) featuring In-Memory JWT, HttpOnly Rotating Refresh Cookies, Bcrypt, granular RBAC, and WCAG 2.1 AA accessible UI with Tailwind CSS, shadcn/ui, and Framer Motion.",
   "author": "José Guilherme <https://github.com/JzGuilherme>",
@@ -9,9 +10,9 @@
     "build:server": "tsc -p tsconfig.server.json",
     "build:client": "vite build",
     "build": "npm run build:server && npm run build:client",
-    "dev:server": "node --import tsx/esm server/src/index.ts",
+    "dev:server": "node --import tsx server/src/index.ts",
     "dev:client": "vite",
-    "test": "node --import tsx/esm --test server/tests/*.test.ts",
+    "test": "node --import tsx --test server/tests/authAndRbac.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.server.json && tsc --noEmit -p tsconfig.client.json"
   },
   "dependencies": {
